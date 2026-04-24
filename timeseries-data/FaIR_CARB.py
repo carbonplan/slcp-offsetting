@@ -10,22 +10,32 @@ Created on Thu Apr 23 15:36:39 2026
 # -*- coding: utf-8 -*-
 
 """
-FaIR analysis: counterfactual vs actual vs claimed
+Created on Thu Apr 23 15:36:39 2026
+
+@author: ryoung
+"""
+
+"""
+FaIR analysis: physical project mitigation vs claimed co2e mitigation
 
 inputs:
-- timeseries_emissions_fluxes.csv
 - timeseries_project_fluxes.csv
 
 scenarios:
-- counterfactual: emissions only (no projects)
-- actual: emissions + project reductions
-- claimed: CH4 reductions treated as CO2 via GWP100
+- baseline: ssp2-4.5 only
+- actual: baseline + physical project co2 and ch4 fluxes
+- claimed: baseline + project co2 fluxes + ch4 project fluxes converted to co2e
+- actual_ch4: baseline + physical ch4 project fluxes only
+- claimed_ch4: baseline + ch4 project fluxes converted to co2e only
+
+notes:
+- ignores n2o and cfc-12 for now
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+ 
 from fair import FAIR
 from fair.interface import fill, initialise
 from fair.io import read_properties
@@ -35,11 +45,11 @@ from fair.io import read_properties
 # user inputs
 # ----------------------------
 
-EMISSIONS_FILE = "timeseries_emission_fluxes.csv"
 PROJECTS_FILE = "timeseries_project_fluxes.csv"
 
 BASELINE_SCENARIO = "ssp245"
-# year-dependent GWP100 for CH4 (matches CARB data)
+
+# year-dependent gwp100 for ch4
 def gwp_ch4(year):
     return 21 if year <= 2020 else 25
 
@@ -48,18 +58,9 @@ def gwp_ch4(year):
 # load data
 # ----------------------------
 
-emissions = pd.read_csv(EMISSIONS_FILE)
-projects = pd.read_csv(PROJECTS_FILE)
-
-emissions.columns = emissions.columns.str.lower()
-projects.columns = projects.columns.str.lower()
-
-df = emissions.merge(
-    projects[["year", "co2_flux", "ch4_flux"]],
-    on="year",
-    how="outer",
-    suffixes=("_e", "_p")
-).sort_values("year").fillna(0)
+df = pd.read_csv(PROJECTS_FILE)
+df.columns = df.columns.str.lower()
+df = df[["year", "co2_flux", "ch4_flux"]].sort_values("year").fillna(0)
 
 
 # ----------------------------
@@ -70,10 +71,8 @@ f = FAIR()
 f.define_time(1750, 2200, 1)
 f.define_scenarios([
     BASELINE_SCENARIO,
-    "counterfactual",
     "actual",
     "claimed",
-    "counterfactual_ch4",
     "actual_ch4",
     "claimed_ch4",
 ])
@@ -124,8 +123,7 @@ for sp in ["CO2 FFI", "CO2 AFOLU", "CH4", "N2O"]:
         specie=sp
     ).values
 
-    for scen in ["counterfactual", "actual", "claimed",
-             "counterfactual_ch4", "actual_ch4", "claimed_ch4"]:
+    for scen in ["actual", "claimed", "actual_ch4", "claimed_ch4"]:
         fill(f.emissions, base, scenario=scen, config="central", specie=sp)
 
 
@@ -142,37 +140,22 @@ for _, row in df.iterrows():
     yr = timepoints[i]
 
     # convert units
-    co2_e = row["co2_flux_e"] / 1e9
-    ch4_e = row["ch4_flux_e"] / 1e6
+    co2_p = row["co2_flux"] / 1e9
+    ch4_p = row["ch4_flux"] / 1e6
 
-    co2_p = row["co2_flux_p"] / 1e9
-    ch4_p = row["ch4_flux_p"] / 1e6
+    # actual: project fluxes enter as physical gases
+    f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CO2 FFI")].values += co2_p
+    f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CH4")].values += ch4_p
 
-    # counterfactual
-    f.emissions.loc[dict(timepoints=yr, scenario="counterfactual", config="central", specie="CO2 FFI")].values += co2_e
-    f.emissions.loc[dict(timepoints=yr, scenario="counterfactual", config="central", specie="CH4")].values += ch4_e
+    # claimed: ch4 project flux is represented as co2-equivalent
+    f.emissions.loc[dict(timepoints=yr, scenario="claimed", config="central", specie="CO2 FFI")].values += co2_p + ch4_p * gwp_ch4(year) / 1000
 
-    # actual
-    f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CO2 FFI")].values += co2_e + co2_p
-    f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CH4")].values += ch4_e + ch4_p
+    # actual_ch4: only physical ch4 project flux
+    f.emissions.loc[dict(timepoints=yr, scenario="actual_ch4", config="central", specie="CH4")].values += ch4_p
 
-    # claimed
-    f.emissions.loc[dict(timepoints=yr, scenario="claimed", config="central", specie="CO2 FFI")].values += co2_e + co2_p + ch4_p * gwp_ch4(year) / 1000
-    f.emissions.loc[dict(timepoints=yr, scenario="claimed", config="central", specie="CH4")].values += ch4_e
-    
-    # ----------------------------
-    # ch4-only scenarios
-    # ----------------------------
-    
-    # counterfactual_ch4
-    f.emissions.loc[dict(timepoints=yr, scenario="counterfactual_ch4", config="central", specie="CH4")].values += ch4_e
-    
-    # actual_ch4
-    f.emissions.loc[dict(timepoints=yr, scenario="actual_ch4", config="central", specie="CH4")].values += ch4_e + ch4_p
-    
-    # claimed_ch4
-    f.emissions.loc[dict(timepoints=yr, scenario="claimed_ch4", config="central", specie="CH4")].values += ch4_e
+    # claimed_ch4: only ch4 project flux represented as co2-equivalent
     f.emissions.loc[dict(timepoints=yr, scenario="claimed_ch4", config="central", specie="CO2 FFI")].values += ch4_p * gwp_ch4(year) / 1000
+
 
 # ----------------------------
 # initialise + run
@@ -190,27 +173,31 @@ initialise(f.ocean_heat_content_change, 0.0)
 
 f.run()
 
-#%% Plot emissions
+
+#%% plot emissions
 
 years_e = np.asarray(f.timepoints, dtype=float)
 
 baseline_co2 = f.emissions.loc[dict(scenario=BASELINE_SCENARIO, config="central", specie="CO2 FFI")]
 baseline_ch4 = f.emissions.loc[dict(scenario=BASELINE_SCENARIO, config="central", specie="CH4")]
 
-counterfactual_co2 = f.emissions.loc[dict(scenario="counterfactual", config="central", specie="CO2 FFI")]
 actual_co2 = f.emissions.loc[dict(scenario="actual", config="central", specie="CO2 FFI")]
 claimed_co2 = f.emissions.loc[dict(scenario="claimed", config="central", specie="CO2 FFI")]
+actual_ch4_only_co2 = f.emissions.loc[dict(scenario="actual_ch4", config="central", specie="CO2 FFI")]
+claimed_ch4_only_co2 = f.emissions.loc[dict(scenario="claimed_ch4", config="central", specie="CO2 FFI")]
 
-counterfactual_ch4 = f.emissions.loc[dict(scenario="counterfactual", config="central", specie="CH4")]
 actual_ch4 = f.emissions.loc[dict(scenario="actual", config="central", specie="CH4")]
 claimed_ch4 = f.emissions.loc[dict(scenario="claimed", config="central", specie="CH4")]
+actual_ch4_only = f.emissions.loc[dict(scenario="actual_ch4", config="central", specie="CH4")]
+claimed_ch4_only = f.emissions.loc[dict(scenario="claimed_ch4", config="central", specie="CH4")]
 
 # co2
 plt.figure(figsize=(7, 4))
-plt.plot(years_e, counterfactual_co2 - baseline_co2, label="Counterfactual")
 plt.plot(years_e, actual_co2 - baseline_co2, label="Actual")
 plt.plot(years_e, claimed_co2 - baseline_co2, label="Claimed")
-plt.axhline(0, linestyle="--", linewidth=1)
+plt.plot(years_e, actual_ch4_only_co2 - baseline_co2, "--", label="Actual (CH4 only)")
+plt.plot(years_e, claimed_ch4_only_co2 - baseline_co2, "--", label="Claimed (CH4 only)")
+plt.axhline(0, linestyle="--", linewidth=1, color='k')
 plt.xlabel("Year")
 plt.ylabel("CO2 emissions perturbation (GtCO2/yr)")
 plt.title("CO2 emissions relative to baseline")
@@ -220,10 +207,11 @@ plt.show()
 
 # ch4
 plt.figure(figsize=(7, 4))
-plt.plot(years_e, counterfactual_ch4 - baseline_ch4, label="Counterfactual")
 plt.plot(years_e, actual_ch4 - baseline_ch4, label="Actual")
 plt.plot(years_e, claimed_ch4 - baseline_ch4, label="Claimed")
-plt.axhline(0, linestyle="--", linewidth=1)
+plt.plot(years_e, actual_ch4_only - baseline_ch4, "--", label="Actual (CH4 only)")
+plt.plot(years_e, claimed_ch4_only - baseline_ch4, "--", label="Claimed (CH4 only)")
+plt.axhline(0, linestyle="--", linewidth=1, color='k')
 plt.xlabel("Year")
 plt.ylabel("CH4 emissions perturbation (MtCH4/yr)")
 plt.title("CH4 emissions relative to baseline")
@@ -237,44 +225,27 @@ plt.show()
 years = np.asarray(f.timebounds, dtype=float)
 
 baseline = f.temperature.loc[dict(scenario=BASELINE_SCENARIO, config="central", layer=0)]
-counterfactual = f.temperature.loc[dict(scenario="counterfactual", config="central", layer=0)]
 actual = f.temperature.loc[dict(scenario="actual", config="central", layer=0)]
 claimed = f.temperature.loc[dict(scenario="claimed", config="central", layer=0)]
+actual_ch4 = f.temperature.loc[dict(scenario="actual_ch4", config="central", layer=0)]
+claimed_ch4 = f.temperature.loc[dict(scenario="claimed_ch4", config="central", layer=0)]
 
-# absolute
+# plot 
 plt.figure(figsize=(7, 4))
-plt.plot(years, baseline, "--", label="Baseline (SSP2-4.5)")
-plt.plot(years, counterfactual, label="Counterfactual")
-plt.plot(years, actual, label="Actual")
-plt.plot(years, claimed, label="Claimed")
-plt.xlabel("Year")
-plt.ylabel("Temperature anomaly (K)")
-plt.title("Temperature trajectories")
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(7, 4))
-# total effects (solid)
-plt.plot(years, actual - counterfactual, label="Actual (total)")
-plt.plot(years, claimed - counterfactual, label="Claimed (total)")
-# ch4-only effects (dashed)
-plt.plot(years,
-         f.temperature.loc[dict(scenario="actual_ch4", config="central", layer=0)]
-         - f.temperature.loc[dict(scenario="counterfactual_ch4", config="central", layer=0)],
-         "--", label="Actual (CH4 only)")
-
-plt.plot(years,
-         f.temperature.loc[dict(scenario="claimed_ch4", config="central", layer=0)]
-         - f.temperature.loc[dict(scenario="counterfactual_ch4", config="central", layer=0)],
-         "--", label="Claimed (CH4 only)")
-
-plt.axhline(0, linestyle="--", linewidth=1,color='k')
+plt.plot(years, actual - baseline, label="Actual (total)")
+plt.plot(years, claimed - baseline, label="Claimed (total)")
+plt.plot(years, actual_ch4 - baseline, "--", label="Actual (CH4 only)")
+plt.plot(years, claimed_ch4 - baseline, "--", label="Claimed (CH4 only)")
+plt.axhline(0, linestyle="--", linewidth=1, color='k')
 plt.ylim(-0.0001, 0.00001)
 plt.xlim(2000, 2200)
 plt.xlabel("Year")
-plt.ylabel("ΔT relative to counterfactual (K)")
-plt.title("Temperature impact")
+plt.ylabel("ΔT relative to baseline (K)")
+plt.title("Temperature impact of project fluxes")
 plt.legend()
 plt.tight_layout()
+plt.savefig("output-figs/fair_temperature_impact.png", dpi=300, bbox_inches="tight")
 plt.show()
+
+print("done: ran physical and claimed project-flux scenarios")
+
