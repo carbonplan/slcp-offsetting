@@ -2,21 +2,48 @@
 
 ## Usage
 
-Install deps:
+Install [pixi](https://pixi.sh), then:
 
-*uv*:
-In your terminal: 
-`curl -LsSf https://astral.sh/uv/install.sh | sh`
+```bash
+pixi install
+```
 
+To install a specific environment (e.g. `lint`, `test`, `coiled-deploy`):
 
-```python
-uv sync --all-groups## License
+```bash
+pixi install -e lint
+```
+
+### Adding packages
+
+From conda-forge (preferred):
+
+```bash
+pixi add <package>
+```
+
+From PyPI:
+
+```bash
+pixi add --pypi <package>
+```
+
+To add to a specific environment:
+
+```bash
+pixi add -e lint <package>
+```
+
+### JupyterLab
+
+```bash
+pixi run jupyter lab
 ```
 
 ### Linting
 
-```python
-uv run prek run --all-files
+```bash
+pixi run -e lint prek run --all-files
 ```
 
 > [!IMPORTANT]
