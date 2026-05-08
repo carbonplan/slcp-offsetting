@@ -48,8 +48,8 @@ from fair.io import read_properties
 # Inputs
 # ----------------------------
 
-PROJECTS_FILE = "timeseries_project_fluxes.csv"
-EMISSIONS_FILE = "timeseries_emission_fluxes.csv"
+PROJECTS_FILE = "output-data/timeseries_project_fluxes.csv"
+EMISSIONS_FILE = "output-data/timeseries_emission_fluxes.csv"
 
 BASELINE_SCENARIO = "ssp245"
 
