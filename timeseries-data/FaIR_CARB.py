@@ -60,7 +60,7 @@ def gwp_ch4(year):
 
 df = pd.read_csv(PROJECTS_FILE)
 df.columns = df.columns.str.lower()
-df = df[["year", "co2_flux", "ch4_flux"]].sort_values("year").fillna(0)
+df = df[["year", "co2_flux", "ch4_flux", "cfc-12_flux"]].sort_values("year").fillna(0)
 
 
 # ----------------------------
@@ -80,7 +80,7 @@ f.define_configs(["central"])
 
 all_species, all_props = read_properties()
 
-species = ["CO2 FFI", "CO2 AFOLU", "CH4", "N2O", "CO2"]
+species = ["CO2 FFI", "CO2 AFOLU", "CH4", "N2O", "CFC-12", "CO2"]
 properties = {s: all_props[s] for s in species}
 
 properties["CO2 FFI"]["input_mode"] = "emissions"
@@ -94,6 +94,9 @@ properties["CH4"]["greenhouse_gas"] = True
 
 properties["N2O"]["input_mode"] = "emissions"
 properties["N2O"]["greenhouse_gas"] = True
+
+properties["CFC-12"]["input_mode"] = "emissions"
+properties["CFC-12"]["greenhouse_gas"] = True
 
 properties["CO2"]["input_mode"] = "calculated"
 properties["CO2"]["greenhouse_gas"] = True
@@ -116,7 +119,7 @@ f.scenarios = [BASELINE_SCENARIO]
 f.fill_from_rcmip()
 f.scenarios = backup
 
-for sp in ["CO2 FFI", "CO2 AFOLU", "CH4", "N2O"]:
+for sp in ["CO2 FFI", "CO2 AFOLU", "CH4", "N2O", "CFC-12"]:
     base = f.emissions.sel(
         scenario=BASELINE_SCENARIO,
         config="central",
@@ -142,12 +145,14 @@ for _, row in df.iterrows():
     # convert units
     co2_p = row["co2_flux"] / 1e9
     ch4_p = row["ch4_flux"] / 1e6
+    cfc12_p = row["cfc-12_flux"] / 1e3
 
     # actual: project fluxes enter as physical gases
     f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CO2 FFI")].values += co2_p
     f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CH4")].values += ch4_p
+    f.emissions.loc[dict(timepoints=yr, scenario="actual", config="central", specie="CFC-12")].values += cfc12_p
 
-    # claimed: ch4 project flux is represented as co2-equivalent
+    # claimed: ch4 project fluxes represented as co2-equivalent
     f.emissions.loc[dict(timepoints=yr, scenario="claimed", config="central", specie="CO2 FFI")].values += co2_p + ch4_p * gwp_ch4(year) / 1000
 
     # actual_ch4: only physical ch4 project flux
