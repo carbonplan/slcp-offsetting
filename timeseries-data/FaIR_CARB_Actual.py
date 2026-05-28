@@ -48,8 +48,8 @@ from fair.io import read_properties
 # Inputs
 # ----------------------------
 
-PROJECTS_FILE = "output-data/timeseries_project_fluxes.csv"
-EMISSIONS_FILE = "output-data/timeseries_emission_fluxes.csv"
+PROJECTS_FILE = "output-data/ca_project_fluxes.csv"
+EMISSIONS_FILE = "output-data/ca_justified_emissions_fluxes.csv"
 
 BASELINE_SCENARIO = "ssp245"
 
@@ -65,9 +65,9 @@ df_p = df_p[["year", "co2_flux", "ch4_flux", "cfc-12_flux"]].sort_values("year")
 df_e = pd.read_csv(EMISSIONS_FILE)
 df_e.columns = df_e.columns.str.lower()
 
-emis_cols = ["year","co2_flux","ch4_flux"]
+emis_cols = ["year","co2_justified","ch4_justified"]
 if "n2o_flux" in df_e.columns:
-    emis_cols.append("n2o_flux")
+    emis_cols.append("n2o_justified")
 
 df_e = df_e[emis_cols].sort_values("year").fillna(0)
 
@@ -167,12 +167,12 @@ for _, row in df_e.iterrows():
     i = np.argmin(np.abs(timepoints - year))
     yr = timepoints[i]
 
-    co2_e = row["co2_flux"] / 1e9
-    ch4_e = row["ch4_flux"] / 1e6
+    co2_e = row["co2_justified"] / 1e9
+    ch4_e = row["ch4_justified"] / 1e6
 
     n2o_e = 0
     if "n2o_flux" in df_e.columns:
-        n2o_e = row["n2o_flux"] / 1e6
+        n2o_e = row["n2o_justified"] / 1e6
 
     for scen in ["emissions_only", "net_program"]:
 
