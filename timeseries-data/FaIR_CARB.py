@@ -341,7 +341,7 @@ claimed_cfc12_t = f.temperature.loc[dict(scenario="claimed_cfc12", config="centr
 
 # --- Full project set temperature ---
 plt.figure(figsize=(7, 4))
-plt.plot(years, actual - baseline,  label="Actual (tCO2)")
+plt.plot(years, actual - baseline,  label="Actual (tCO2 + tCH4 + tCFC-12)")
 plt.plot(years, claimed - baseline, "--", label="Claimed (total tCO2e)")
 plt.axhline(0, linestyle="--", linewidth=1, color='k')
 plt.xlim(2000, 2200)
