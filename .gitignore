@@ -19,3 +19,4 @@ timeseries-data/output-data/
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+*.xlsx # or the specific filename
