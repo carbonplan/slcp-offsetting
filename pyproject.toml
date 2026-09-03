@@ -23,6 +23,7 @@
     seaborn    = ">=0.13.2,<0.14"
 
 [tool.pixi.pypi-dependencies]
+	fair = "*"
     slcp-offsetting = { path = ".", editable = true }
 
 [tool.pixi.environments]
